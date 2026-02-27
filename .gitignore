@@ -1,0 +1,32 @@
+# OS/editor noise
+.DS_Store
+.idea/
+.vscode/
+
+# Python cache/bytecode
+__pycache__/
+*.py[cod]
+*.nbc
+*.nbi
+
+# Local environments
+.venv/
+venv/
+env/
+
+# Test/tool caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Build outputs
+build/
+dist/
+*.spec
+
+# Runtime/generated simulation artifacts
+runs/
+run_history.csv
+run_history.csv.bak
+*.log
+*.zip

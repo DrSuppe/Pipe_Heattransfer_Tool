@@ -1,0 +1,35 @@
+name: compile-smoke
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  compile-and-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install minimal runtime deps for solver smoke check
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install numpy
+
+      - name: Compile active modules
+        run: |
+          python -m compileall -q Pipe_Sim_V4.py sim_controller.py gui.py pyqt6_app.py
+
+      - name: Solver smoke check (no files written)
+        run: |
+          python - <<'PY'
+          from Pipe_Sim_V4 import run_simulation
+          res = run_simulation({"Nx": 64, "t_end": 2.0, "save_frames": 4, "parallel": False, "progress": "none"})
+          assert res.n_steps >= 1
+          print("smoke_ok", res.n_steps, round(res.Tg_outlet_final, 6), res.stop_reason)
+          PY

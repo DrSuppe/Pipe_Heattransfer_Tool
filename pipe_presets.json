@@ -1,0 +1,25 @@
+{
+  "TL9_TC01": {
+    "Di": 0.131826,
+    "L": 73.152,
+    "Tamb": 286.4444444444444,
+    "Tin": 1133.3333333333333,
+    "Tin_ramp_s": 900.0,
+    "elbow_positions": "87.5%, 95.8%",
+    "elbow_sif": 1.2,
+    "ins_material": "Calcium Silicate",
+    "insulation": true,
+    "m_dot": 2.2679618499987404,
+    "n_elbows": 2,
+    "n_tmass": 4,
+    "p": 1035592.5454338335,
+    "pipe_material": "Haynes 282",
+    "t_ins": 0.127,
+    "t_wall": 0.018262599999999997,
+    "tmass_deadleg_d_ratio": 1.0,
+    "tmass_deadleg_len_m": 12.192,
+    "tmass_factor": 1.85,
+    "tmass_positions": "15.0%, 38.3%, 61.7%, 85.0%",
+    "tmass_spread_pct": 3.0
+  }
+}
