@@ -501,32 +501,7 @@ Interpretation:
 
 For final design allowables, use a dedicated thermo-mechanical model (axisymmetric/3D FEA with realistic constraints and pressure loading) [7,8].
 
-## Practical Setup Recipes
-
-### Recipe A: Fast commissioning estimate
-
-1. Use `Balanced` preset.
-2. Enable insulation if physically present.
-3. Enable temperature-dependent solids.
-4. Set `Target variable = Gas outlet Tg`.
-5. Run fixed time first to understand trend.
-6. Switch to outlet-target mode for exact crossing estimate.
-
-### Recipe B: Thermocouple-on-skin matching
-
-1. Set `Target variable = Wall outer outlet Tw(out)`.
-2. Ensure insulation thickness/material are correct.
-3. Keep ambient/emissivity realistic.
-4. Compare predicted outer-wall trace to measured skin sensor.
-
-### Recipe C: Tee-heavy line with local thermal inertia
-
-1. Set thermal mass count to number of major attached masses.
-2. Enter approximate positions (absolute distance or `%`).
-3. Start with `mass_factor = 1.0` to `3.0`.
-4. Tune factor/spread against measured lag in local temperatures.
-
-## Statistics Panel (Current)
+## Statistics Panel
 
 The Results tab computes and displays:
 
@@ -575,20 +550,6 @@ This supports trend tracking and predictive maintenance workflows across many he
 
 Note: automatic ledger append is configurable in the Outputs panel and can be left off by default for manual control.
 
-## Running
-
-Install dependencies (example):
-
-```bash
-python3 -m pip install -r requirements.txt
-```
-
-Run PyQt6 app:
-
-```bash
-python3 pyqt6_app.py
-```
-
 ## Outputs
 
 When saving is enabled, runs are written under `runs/run_YYYYmmdd_HHMMSS_microsec/` with:
@@ -607,7 +568,7 @@ Run folder retention:
 - Ledger and library files are not affected by this pruning.
 - For GitHub workflows, generated folders/files are listed in `.gitignore` so commits stay code-focused.
 
-## Error Message Guide (Engineering)
+## Error Message Guide
 
 ### Input validation errors (raised before solve starts)
 
@@ -653,7 +614,7 @@ Run folder retention:
 - `Outlet Tg`: current/selected outlet gas temperature.
 - `Frames`: number of stored snapshots in memory for playback.
 
-### Simulation log (`Simulation Log` tab, `run.log`)
+### Simulation log
 
 Progress line format:
 
@@ -683,7 +644,7 @@ Runtime summary line:
 - `Radial/Axial sensitivity diagnostics`: coarse convergence checks for stress post-processing confidence.
 - `Inlet-hotspot ratio`: compares global max vs max excluding early inlet cells to identify potential numerical/BC artifacts.
 
-## Elbow Estimation Method (Current Screening Model)
+## Elbow Estimation Method
 
 The elbow feature is intentionally a **fast screening layer**:
 
@@ -749,7 +710,7 @@ Constraint reporting:
 - See [SECURITY.md](SECURITY.md) for distribution-oriented security checklist and hardening notes.
 - See [BUILD.md](BUILD.md) for macOS/Windows standalone packaging instructions.
 
-## Scientific References
+## References
 
 [1] V. Gnielinski, "New equations for heat and mass transfer in turbulent pipe and channel flow," *International Chemical Engineering*, 16(2), 359-368, 1976.  
 [2] B. S. Petukhov, "Heat Transfer and Friction in Turbulent Pipe Flow with Variable Physical Properties," *Advances in Heat Transfer*, 6, 503-564, 1970.  
@@ -761,79 +722,3 @@ Constraint reporting:
 [8] ASME B31.3 Process Piping and ASME B31J Stress Intensification Factors and Flexibility Factors.  
 [9] L. F. Coffin Jr., "A Study of the Effects of Cyclic Thermal Stresses on a Ductile Metal," *Transactions of the ASME*, 76, 931-950, 1954; S. S. Manson, "Behavior of Materials under Conditions of Thermal Stress," NACA Report 1170, 1954.  
 [10] J. Bree, "Elastic-Plastic Behaviour of Thin Tubes Subjected to Internal Pressure and Intermittent High-Heat Fluxes with Application to Fast-Nuclear-Reactor Fuel Elements," *Journal of Strain Analysis*, 2(3), 226-238, 1967.
-
-## Progress Log (Living)
-
-Use this section as an always-updated engineering log for final reporting.
-
-### 2026-02-25
-
-- Added Phase-1 reliability fixes:
-  - no-numba fallback import stability,
-  - target stop-direction fix,
-  - per-run override support,
-  - run directory uniqueness,
-  - file handler cleanup,
-  - `dt_min` enforcement,
-  - safer expression parsing in Tk GUI.
-- Introduced PyQt6 scaffold and then upgraded to workflow-first UI.
-- Added live solver snapshot callback path from core solver -> controller -> PyQt worker.
-- Added embedded live plots and post-run playback slider/time cursor.
-- Added static Results tab with heatmap, waterfall, outlet trends, and first-pass stress plot.
-- Shifted boundary condition workflow toward material + optional insulation + ambient with auto external convection estimate (`h_out_mode=auto`).
-- Changed initial gas temperature handling to initialize from wall/ambient conditions (`T_init_gas` / `T_init_wall`) instead of forcing `Tin`.
-- Added runtime material library editing tab (pipe + insulation).
-- Added SI/Imperial unit toggle affecting inputs, live plots, result plots, and statistics.
-- Replaced axial stress display with a thermal-gradient internal stress indicator + added statistics panel (target time, max stress, stress location/time, expansion, wall dT metrics).
-- Added built-in material presets for Haynes 282 and Hastelloy X.
-- Added Material Library tab for user-defined pipe/insulation materials during runtime.
-- Fixed live-plot rendering path to keep a single heatmap colorbar axis (prevents multi-colorbar/axis clutter).
-- Ensured gas initial condition can be set from ambient/wall initialization (`T_init_gas`) rather than forcing `Tin`.
-- Added stress-v2 screening with radial wall mesh (`Nr_wall`) and von-Mises indicator outputs.
-- Added elbow screening support (count + SIF factor) to report elbow-amplified stress indicators.
-- Added inlet temperature ramp control (`Tin_ramp_s`) in solver and UI.
-- Added stress sensitivity diagnostics (radial refinement and axial coarse checks) + inlet hotspot ratio.
-- Added health/fatigue warning panel including ratcheting-oriented screening index.
-- Added run history ledger append workflow (`CSV`, optional `XLSX`).
-- Added localized elbow-position screening input (`auto` or explicit `%L` list) and localized elbow amplification profile.
-- Added `Ledger` tab (preview, append config row, delete selected rows) and `README` tab (in-app Markdown rendering).
-- Added scenario metadata fields (`asset_id`, `branch_id`) into run ledger rows for shared-trunk/branch analytics.
-- Switched internal convection model to Gnielinski (laminar/transition/turbulent blending).
-- Expanded README with engineering error guide, output-field definitions, elbow-model assumptions, branching-ledger method, and scientific citations.
-- Set left sidebar minimum width to prevent lateral clipping/scroll behavior in dense parameter forms.
-- Renamed `Material Library` tab to `Library` and added custom pipe preset management (save/apply/delete).
-- Changed elbow-position parsing to accept explicit distances (`m`/`ft` based on active units) and `%` notation.
-- Changed results presentation to focus on total stress indicators (with elbow-adjusted comparison).
-- Changed automatic run-ledger append default to off.
-- Stabilized Ledger tab table behavior to avoid persistent UI resizing from wide auto-sized columns.
-- Added `Heatup-time optimize` mode (coarse-to-fine search on `m_dot` with stress cap + time tolerance target).
-- Added `Stress-limit optimize` mode (bisection on `m_dot` against stress cap, report heatup time).
-- Added one-click `Export Bundle` action to package run + config + stats/warnings + ledger/library snapshots.
-- Added run-folder retention cap (`max_run_dirs`, default `1000`) to prevent uncontrolled run-directory growth.
-- Added `SECURITY.md` with a release security checklist and hardening recommendations.
-- Added ledger-tab width stabilization (compact status text + curated preview columns) to avoid UI spring-open behavior.
-- Added optimization constraint status reporting (target reached, stress-limit pass/fail, heatup tolerance pass/fail).
-- Added standalone packaging guide (`BUILD.md`) for macOS/Windows via PyInstaller.
-- Added ledger schema migration handling (legacy/new columns) for both preview and append workflows to avoid malformed CSV/XLSX rows over time.
-- Added compact table size-hint behavior on the Ledger tab to avoid window expansion when opening wide ledgers.
-- Added optimization post-correction pass on full-resolution mesh to better honor stress/time constraints and record correction status.
-- Added per-run `optimization_summary.json` artifact in run folders for easier log/debug review.
-- Aligned optimization-run `params.json` `t_end` with the effective optimization cap to remove confusing `params` vs `run.log` time mismatches.
-
-### 2026-02-26
-
-- Added temperature-dependent solid property plumbing for both pipe and insulation (`cp(T)`, `k(T)` interpolation in solver).
-- Added representative built-in temperature-property tables for supported metals and insulation materials.
-- Added attached thermal-mass controls (count/factor/positions/spread) and coupled them into local wall thermal capacity.
-- Added selectable target variable (`gas_outlet`, `wall_inner_outlet`, `wall_outer_outlet`, `insulation_outlet`) across solve, optimization, and results/statistics.
-- Expanded README with beginner-first operating workflow, plain-language terminology, setup recipes, and feature usage guidance.
-- Added Library-tab temperature-table editor for direct `T/cp/k` material table editing (pipe + insulation).
-- Added dead-leg rough-scaling helper for thermal mass factor (with one-click apply).
-- Expanded parameter reference so every GUI input has short effect-oriented documentation.
-- Added explicit documentation for thermal-mass semantics (mass factor, spread, auto-distribute behavior, and simulation impact).
-- Added worked example mapping: `4` dead-end tees of `12 m` each -> concrete GUI settings and rough mass-factor calculation.
-- Added inlet heater warm-up documentation and solver equations (linear default with optional `heater_exp` mode).
-- Aligned UI wording to heater semantics (`Heater setpoint Tin`, `Heater rise time to setpoint`) and added inlet tracking visualization (`Tin_eff` vs `Tg_in(cell0)`).
-- Set new defaults: `m_dot = 2.5 kg/s` and `t_end = 5000 s`.
-- Added selectable heater ramp profile (`Logistic`, `Linear`, `Exponential`) with logistic default and `Tin_ramp_s = 900 s` GUI default.
-- Reduced left control-panel width and tightened top status row to improve fit on smaller displays.
