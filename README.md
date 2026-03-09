@@ -107,8 +107,14 @@ dTg/dt = advection + q_gw / Cg
 where:
 
 - `advection` is upwind or semi-Lagrangian transport,
-- `q_gw = h_in * P_in * (Tw - Tg)`,
+- `q_gw = h_in * P_in * dx * (Tw - Tg)`,
 - `Cg = rho_g * A_flow * dx * cp_g`.
+
+So the source ratio is mesh-consistent:
+
+```text
+q_gw / Cg = h_in * P_in * (Tw - Tg) / (rho_g * A_flow * cp_g)
+```
 
 Internal convection `h_in` uses Gnielinski (with laminar/transition blending in code):
 
@@ -156,7 +162,7 @@ Per axial cell, a coupled implicit 2x2 solve is done for `(Tw, Ti)`:
 Radiation is linearized per step with:
 
 ```text
-k_rad ~ 4 * eps * sigma * P_out * Ti^3
+k_rad ~ 4 * eps * sigma * P_out * dx * Ti^3
 ```
 
 This linearization is standard for implicit transient radiation coupling around a local operating temperature [4].
@@ -291,10 +297,12 @@ What auto-distribute does for this example:
 - Gas advection:
   - default: `semi_lagrangian` (stable at larger `dt`),
   - optional: upwind.
+  - semi-Lagrangian inlet crossing (`x_dep < 0`) uses boundary crossing time inside each step (characteristic-aware).
+  - semi-Lagrangian also uses an accuracy Courant cap via `semi_lag_courant_max` (default `2.0`).
 - Solid diffusion:
   - Crank-Nicolson with cached factorization.
 - Adaptive time step:
-  - bounded by source and CFL-like constraints,
+  - bounded by source and CFL-like/accuracy constraints,
   - clamped by `dt_min <= dt <= dt_max`.
 - Float precision:
   - configurable (`float32` default for speed, `float64` if needed).
@@ -436,6 +444,13 @@ Each parameter below is user-settable in the GUI and includes its simulation eff
 - `dt_max`: upper cap on adaptive timestep for stability/accuracy control.
 - `dt_min`: lower cap to prevent collapse of timestep in stiff regions.
 - `update_props_every`: recomputation interval for flow/transfer coefficients and temperature-dependent state.
+- `adv_scheme`: advection model (`semi_lagrangian` or `upwind`) for gas transport.
+- `semi_lag_courant_max` (solver override): semi-Lagrangian accuracy cap; lower values reduce staircase artifacts at high velocity but increase step count.
+- `prop_update_temp_threshold_k` (solver override): temperature-change threshold for rebuilding temperature-dependent solid properties.
+- `prop_update_force_steps` (solver override): maximum step gap before forcing a solid-property rebuild.
+- `insulation_mass_mode` (`penetration` or `full`): effective insulation thermal-mass model for transient outer-surface response.
+- `insulation_mass_min_frac`: lower bound on effective insulation mass fraction in penetration mode.
+- `target_asymptote_check`: enables early stop when target-mode runs asymptote or are projected to miss target within `t_end`.
 - `Stress Nr_wall`: radial reconstruction points for stress screening post-processing.
 - `Axial restraint`: scaling for axial thermal restraint contribution in stress indicator.
 - `Ignore inlet cells`: excludes first N cells in hotspot diagnostics to reduce BC-dominated false alarms.
@@ -443,7 +458,7 @@ Each parameter below is user-settable in the GUI and includes its simulation eff
 - `use_float32`: improves speed/memory at potential precision cost vs float64.
 - `write run.log`: writes textual runtime logs in run folder.
 - `write runtime_trace.csv`: writes sampled runtime performance trace.
-- `show popup plots after run`: opens matplotlib windows after run completes.
+- `open results popup after run`: opens an in-app enlarged results plot after completion (main-thread safe).
 - `include pressure in total stress`: adds pressure terms to total stress indicator.
 - `compute stress sensitivity diagnostics`: runs coarse sensitivity checks for stress post-processing confidence.
 
@@ -583,6 +598,12 @@ Run folder retention:
 | `h_out_mode must be 'auto' or 'manual'` | Unsupported model selection. | Choose valid mode. |
 | `Nx must be >= 3` | Grid too coarse for stable transport/diffusion operators. | Increase axial cells. |
 | `dt_max and dt_min must be > 0` / `dt_min must be <= dt_max` | Invalid adaptive-step bounds. | Use positive, ordered time-step limits. |
+| `semi_lag_courant_max must be > 0` | Non-positive semi-Lagrangian accuracy cap. | Use a positive value (default `2.0`). |
+| `prop_update_temp_threshold_k must be >= 0` | Invalid solid-property rebuild threshold. | Use zero or positive temperature threshold. |
+| `prop_update_force_steps must be >= 1` | Invalid forced rebuild interval. | Use an integer >= 1. |
+| `insulation_mass_mode must be 'full' or 'penetration'` | Unsupported insulation transient-mass model selection. | Choose `full` or `penetration`. |
+| `insulation_mass_min_frac must be in (0, 1]` | Invalid effective insulation mass bound. | Use a value between 0 and 1. |
+| `target_asymptote_*` validation errors | Invalid asymptote-stop configuration in target mode. | Use positive window/projection/stall settings and non-negative tolerances. |
 | `Tin_ramp_s must be >= 0` | Negative ramp time has no physical meaning. | Use zero or positive ramp duration. |
 | `Tin_ramp_model must be 'heater_exp', 'linear', or 'logistic'` | Unsupported inlet ramp function selection. | Use one of the supported ramp model strings. |
 | `theta_cond must be in (0, 1]` | Implicit diffusion weighting out of scheme bounds. | Keep in `(0, 1]` (default `0.5`). |

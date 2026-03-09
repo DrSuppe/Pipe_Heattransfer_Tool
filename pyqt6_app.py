@@ -18,6 +18,7 @@ import io
 import json
 import logging
 import shutil
+import sys
 import traceback
 import zipfile
 from dataclasses import replace
@@ -28,6 +29,7 @@ from typing import Any, Dict
 import numpy as np
 
 from sim_controller import HardwareConfig, RunInputs, RunSpec, run_once
+from Pipe_Sim_V4 import HAS_NUMBA
 
 try:
     from PyQt6.QtCore import QObject, QSize, Qt, QThread, QTimer, pyqtSignal, pyqtSlot
@@ -808,9 +810,18 @@ class SimulationWorker(QObject):
 
 class ThermalPipeWindow(QMainWindow):
     PRESETS: Dict[str, Dict[str, Any]] = {
-        "Fast estimate": {"Nx": 450, "save_frames": 120, "dt_max": 4.0, "dt_min": 1e-4, "update_props_every": 10},
-        "Balanced": {"Nx": 1300, "save_frames": 240, "dt_max": 2.5, "dt_min": 1e-4, "update_props_every": 5},
-        "High fidelity": {"Nx": 2600, "save_frames": 320, "dt_max": 1.0, "dt_min": 1e-4, "update_props_every": 2},
+        "Fast estimate": {
+            "Nx": 450, "save_frames": 120, "dt_max": 4.0, "dt_min": 1e-4, "update_props_every": 10,
+            "adv_scheme": "semi_lagrangian", "semi_lag_courant_max": 2.2, "use_float32": True,
+        },
+        "Balanced": {
+            "Nx": 1300, "save_frames": 240, "dt_max": 2.5, "dt_min": 1e-4, "update_props_every": 5,
+            "adv_scheme": "semi_lagrangian", "semi_lag_courant_max": 1.2, "use_float32": True,
+        },
+        "High fidelity": {
+            "Nx": 2600, "save_frames": 320, "dt_max": 1.0, "dt_min": 1e-4, "update_props_every": 2,
+            "adv_scheme": "upwind", "semi_lag_courant_max": 1.0, "use_float32": False,
+        },
     }
     PIPE_DEFAULTS: Dict[str, Dict[str, Any]] = {
         "Custom / current": {},
@@ -939,7 +950,7 @@ class ThermalPipeWindow(QMainWindow):
         self._setup_logging()
         self._load_custom_pipe_presets()
         self._refresh_pipe_default_combo()
-        self._apply_preset("Balanced")
+        self._apply_preset("Fast estimate")
         self._on_pipe_material_changed(self.pipe_material.currentText())
         self._sync_mode_widgets()
         self._sync_insulation_widgets()
@@ -1040,7 +1051,7 @@ class ThermalPipeWindow(QMainWindow):
 
         self.preset = QComboBox()
         self.preset.addItems(list(self.PRESETS))
-        self.preset.setCurrentText("Balanced")
+        self.preset.setCurrentText("Fast estimate")
         self.preset.currentTextChanged.connect(self._apply_preset)
 
         self.pipe_default = QComboBox()
@@ -1079,7 +1090,7 @@ class ThermalPipeWindow(QMainWindow):
         self.in_stress_limit = self._dbl(250.0, 1.0, 1.0e5, 2, " MPa")
 
         form.addRow("Units", self.units)
-        form.addRow("Preset", self.preset)
+        form.addRow("Performance mode", self.preset)
         form.addRow("Pipe default", self.pipe_default)
         form.addRow("", btn_apply_pipe_default)
         form.addRow("Asset ID", self.asset_id)
@@ -1279,6 +1290,16 @@ class ThermalPipeWindow(QMainWindow):
         self.in_update_props = QSpinBox()
         self.in_update_props.setRange(1, 1000)
         self.in_update_props.setValue(5)
+        self.in_adv_scheme = QComboBox()
+        self.in_adv_scheme.addItem("semi_lagrangian", "semi_lagrangian")
+        self.in_adv_scheme.addItem("upwind", "upwind")
+        self.in_adv_scheme.setCurrentIndex(0)
+        self.in_semi_lag_cmax = self._dbl(1.2, 0.1, 20.0, 2, "")
+        self.in_ins_mass_mode = QComboBox()
+        self.in_ins_mass_mode.addItem("penetration", "penetration")
+        self.in_ins_mass_mode.addItem("full", "full")
+        self.in_ins_mass_mode.setCurrentIndex(0)
+        self.in_ins_mass_min_frac = self._dbl(0.25, 0.01, 1.0, 2, "")
 
         self.in_nr_wall = QSpinBox()
         self.in_nr_wall.setRange(3, 80)
@@ -1298,12 +1319,14 @@ class ThermalPipeWindow(QMainWindow):
         self.chk_log_to_file.setChecked(True)
         self.chk_write_trace = QCheckBox("write runtime trace")
         self.chk_write_trace.setChecked(True)
-        self.chk_show_plots = QCheckBox("show popup plots\nafter run")
+        self.chk_show_plots = QCheckBox("open results popup\nafter run")
         self.chk_show_plots.setChecked(False)
         self.chk_include_pressure = QCheckBox("include pressure in\ntotal stress")
         self.chk_include_pressure.setChecked(True)
         self.chk_convergence_diag = QCheckBox("stress sensitivity\ndiagnostics")
         self.chk_convergence_diag.setChecked(True)
+        self.chk_target_asymptote = QCheckBox("target asymptote stop")
+        self.chk_target_asymptote.setChecked(True)
 
         flags = QWidget()
         flags_l = QVBoxLayout(flags)
@@ -1315,12 +1338,17 @@ class ThermalPipeWindow(QMainWindow):
         flags_l.addWidget(self.chk_show_plots)
         flags_l.addWidget(self.chk_include_pressure)
         flags_l.addWidget(self.chk_convergence_diag)
+        flags_l.addWidget(self.chk_target_asymptote)
 
         form.addRow("Nx", self.in_Nx)
         form.addRow("Save frames", self.in_save_frames)
         form.addRow("dt max", self.in_dt_max)
         form.addRow("dt min", self.in_dt_min)
         form.addRow("Props update step", self.in_update_props)
+        form.addRow("Advection", self.in_adv_scheme)
+        form.addRow("Semi-Lag Courant max", self.in_semi_lag_cmax)
+        form.addRow("Insulation mass model", self.in_ins_mass_mode)
+        form.addRow("Insulation min frac", self.in_ins_mass_min_frac)
         form.addRow("Wall Nr", self.in_nr_wall)
         form.addRow("Axial restraint", self.in_axial_restraint)
         form.addRow("Ignore inlet cells", self.in_ignore_inlet_cells)
@@ -1677,6 +1705,8 @@ class ThermalPipeWindow(QMainWindow):
             logging.Formatter("%(asctime)s | %(levelname)s | %(message)s", datefmt="%H:%M:%S")
         )
         root_logger.addHandler(self.log_handler)
+        if not HAS_NUMBA:
+            logging.warning("Numba acceleration not available; runs may be slower. Install 'numba' for best performance.")
 
     def _refresh_material_lists(self):
         if hasattr(self, "pipe_list"):
@@ -2937,6 +2967,14 @@ class ThermalPipeWindow(QMainWindow):
         self.in_dt_max.setValue(cfg["dt_max"])
         self.in_dt_min.setValue(cfg["dt_min"])
         self.in_update_props.setValue(cfg["update_props_every"])
+        if "adv_scheme" in cfg and hasattr(self, "in_adv_scheme"):
+            idx = self.in_adv_scheme.findData(cfg["adv_scheme"])
+            if idx >= 0:
+                self.in_adv_scheme.setCurrentIndex(idx)
+        if "semi_lag_courant_max" in cfg and hasattr(self, "in_semi_lag_cmax"):
+            self._set_box_safely(self.in_semi_lag_cmax, float(cfg["semi_lag_courant_max"]))
+        if "use_float32" in cfg and hasattr(self, "chk_use_float32"):
+            self.chk_use_float32.setChecked(bool(cfg["use_float32"]))
 
     def _collect_spec(self) -> RunSpec:
         mode_ui = self.mode.currentText()
@@ -3051,11 +3089,15 @@ class ThermalPipeWindow(QMainWindow):
             "Tin_ramp_s": self.in_tin_ramp.value(),
             "Tin_ramp_model": str(self.in_tin_ramp_model.currentData() or "logistic"),
             "update_props_every": self.in_update_props.value(),
+            "adv_scheme": str(self.in_adv_scheme.currentData() or "semi_lagrangian"),
+            "semi_lag_courant_max": float(self.in_semi_lag_cmax.value()),
             "progress": self.progress.currentText(),
             "use_float32": self.chk_use_float32.isChecked(),
             "log_to_file": self.chk_log_to_file.isChecked(),
             "write_trace_csv": self.chk_write_trace.isChecked(),
-            "show_plots": self.chk_show_plots.isChecked(),
+            "target_asymptote_check": self.chk_target_asymptote.isChecked(),
+            # GUI worker-thread runs must not call pyplot popups directly.
+            "show_plots": False,
             "rho_w": pipe_mat["rho_w"],
             "cp_w": pipe_mat["cp_w"],
             "k_w": pipe_mat["k_w"],
@@ -3077,6 +3119,8 @@ class ThermalPipeWindow(QMainWindow):
             "T_init_gas": ambient,
             "h_out_mode": "auto",
             "h_out": 0.0,
+            "insulation_mass_mode": str(self.in_ins_mass_mode.currentData() or "penetration"),
+            "insulation_mass_min_frac": float(self.in_ins_mass_min_frac.value()),
         }
 
         return RunSpec(
@@ -3084,7 +3128,8 @@ class ThermalPipeWindow(QMainWindow):
             run=run_inputs,
             overrides=overrides,
             save_dir=self._save_dir,
-            make_plots=self.chk_make_plots.isChecked(),
+            # Save/export images is handled in the Qt main thread after completion.
+            make_plots=False,
             save_results=self.chk_save_results.isChecked(),
         )
 
@@ -3435,6 +3480,13 @@ class ThermalPipeWindow(QMainWindow):
 
         self._set_playback_data(result)
         self._render_static_results(result)
+        if self.chk_make_plots.isChecked():
+            self._save_plot_images_from_result(result)
+        if self.chk_show_plots.isChecked() and HAS_MPL and self._results_axes:
+            try:
+                self._show_results_popup(self._results_axes[0])
+            except Exception as exc:
+                logging.warning("Could not open post-run results popup: %s", exc)
         if self.chk_append_ledger.isChecked():
             try:
                 self._append_run_ledger(result)
@@ -4048,6 +4100,70 @@ class ThermalPipeWindow(QMainWindow):
         if any(lbl and lbl != "_nolegend_" for lbl in labels):
             target_ax.legend(loc="best", fontsize=10, framealpha=0.9)
 
+    def _save_plot_images_from_result(self, result):
+        if not HAS_MPL:
+            return
+        outdir = getattr(result, "outdir", None)
+        if outdir is None:
+            logging.warning("Plot image save requested, but no run output directory is available.")
+            return
+        try:
+            outdir = Path(outdir)
+            outdir.mkdir(parents=True, exist_ok=True)
+            x_si = np.asarray(result.x, dtype=float)
+            times = np.asarray(result.times, dtype=float)
+            tw_si = np.asarray(result.Tw_hist, dtype=float)
+            tg_si = np.asarray(result.Tg_hist, dtype=float)
+            ti_si = np.asarray(result.Ti_hist, dtype=float)
+            if times.size == 0 or x_si.size == 0:
+                return
+
+            x = np.asarray(self._length_to_display(x_si), dtype=float)
+            tw = np.asarray(self._temp_to_display(tw_si), dtype=float)
+            tg = np.asarray(self._temp_to_display(tg_si), dtype=float)
+            ti = np.asarray(self._temp_to_display(ti_si), dtype=float)
+            t = np.asarray(times, dtype=float)
+            temp_unit = self._temp_unit_label()
+            x_unit = "m" if self._units == "SI" else "ft"
+
+            heat_fig = Figure(figsize=(15, 4), constrained_layout=True)
+            axw = heat_fig.add_subplot(1, 3, 1)
+            axg = heat_fig.add_subplot(1, 3, 2)
+            axi = heat_fig.add_subplot(1, 3, 3)
+            ext = [float(x[0]), float(x[-1]), float(t[-1]), float(t[0])]
+            imw = axw.imshow(tw, aspect="auto", extent=ext)
+            img = axg.imshow(tg, aspect="auto", extent=ext)
+            imi = axi.imshow(ti, aspect="auto", extent=ext)
+            axw.set_title("Wall Tw(x,t)")
+            axg.set_title("Gas Tg(x,t)")
+            axi.set_title("Insulation Ti(x,t)")
+            for ax in (axw, axg, axi):
+                ax.set_xlabel(f"x [{x_unit}]")
+                ax.set_ylabel("time [s]")
+            heat_fig.colorbar(imw, ax=axw, label=temp_unit)
+            heat_fig.colorbar(img, ax=axg, label=temp_unit)
+            heat_fig.colorbar(imi, ax=axi, label=temp_unit)
+            heat_fig.savefig(outdir / "heatmaps.png", dpi=200)
+
+            prof_fig = Figure(figsize=(10, 4), constrained_layout=True)
+            axp = prof_fig.add_subplot(1, 1, 1)
+            nmax = 30
+            idx = np.linspace(0, max(0, t.size - 1), min(nmax, max(1, t.size)), dtype=int)
+            for i in idx:
+                axp.plot(x, tw[i], linewidth=1.0, alpha=0.8)
+            for i in idx:
+                axp.plot(x, tg[i], "--", linewidth=1.0, alpha=0.8)
+            for i in idx:
+                axp.plot(x, ti[i], ":", linewidth=1.0, alpha=0.8)
+            axp.set_xlabel(f"x [{x_unit}]")
+            axp.set_ylabel(f"Temperature [{temp_unit}]")
+            axp.set_title("Profiles Over Time")
+            axp.grid(alpha=0.25)
+            prof_fig.savefig(outdir / "profiles.png", dpi=200)
+            logging.info("Saved plot images: heatmaps.png, profiles.png")
+        except Exception as exc:
+            logging.warning("Failed to save plot images: %s", exc)
+
     def _render_static_results(self, result):
         if not HAS_MPL or not hasattr(self, "results_fig"):
             return
@@ -4402,6 +4518,12 @@ class ThermalPipeWindow(QMainWindow):
 
     def closeEvent(self, event):
         self._play_timer.stop()
+        if hasattr(self, "_worker") and self._worker is not None:
+            self._worker.cancel()
+        if hasattr(self, "_thread") and self._thread is not None and self._thread.isRunning():
+            self._thread.quit()
+            self._thread.wait(2000)
+        
         root_logger = logging.getLogger()
         if getattr(self, "log_handler", None) is not None:
             try:
@@ -4416,10 +4538,10 @@ class ThermalPipeWindow(QMainWindow):
 
 
 def main():
-    app = QApplication([])
+    app = QApplication(sys.argv)
     window = ThermalPipeWindow()
     window.show()
-    app.exec()
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
