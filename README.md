@@ -12,8 +12,15 @@ The GUI is designed for rapid first estimates and report-ready visual outputs.
 ## Current App Entrypoints
 
 - Tkinter legacy UI: `gui.py`
-- PyQt6 main UI (recommended): `pyqt6_app.py`
-- Solver core: `Pipe_Sim_V4.py`
+- PyQt6 compatibility entrypoint (recommended launch): `pyqt6_app.py`
+- PyQt6 modular UI package:
+  - `thermal_pipe_ui/window.py` (thin app window + orchestration)
+  - `thermal_pipe_ui/panels.py` (tab/panel construction)
+  - `thermal_pipe_ui/plotting.py` (live/results plotting and interactions)
+  - `thermal_pipe_ui/optimization.py` (worker + optimization helpers)
+  - `thermal_pipe_ui/persistence.py` (presets, ledger, bundle export)
+- Solver runner/compatibility entrypoint: `Pipe_Sim_V4.py`
+- Solver helper modules: `thermal_pipe/config.py`, `thermal_pipe/numerics.py`, `thermal_pipe/runtime.py`, `thermal_pipe/outputs.py`
 - Controller/dataclasses glue: `sim_controller.py`
 - GitHub CI smoke check: `.github/workflows/compile-smoke.yml`
 

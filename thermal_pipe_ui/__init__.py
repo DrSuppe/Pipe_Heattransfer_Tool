@@ -9,14 +9,8 @@
 # __credits__        = ["Tim Kayser"]
 # __license__        = "GPL"
 ##########################################################################
-"""Compatibility entrypoint for the PyQt6 thermal pipe GUI.
+"""Thermal pipe desktop UI package."""
 
-This module intentionally stays thin so external scripts that import
-`pyqt6_app` keep working while implementation lives under `thermal_pipe_ui`.
-"""
+from .window import ThermalPipeWindow, main
 
-from thermal_pipe_ui.window import *  # noqa: F401,F403
-
-
-if __name__ == "__main__":
-    main()
+__all__ = ["ThermalPipeWindow", "main"]

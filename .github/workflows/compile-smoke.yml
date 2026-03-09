@@ -23,7 +23,7 @@ jobs:
 
       - name: Compile active modules
         run: |
-          python -m compileall -q Pipe_Sim_V4.py sim_controller.py gui.py pyqt6_app.py
+          python -m compileall -q Pipe_Sim_V4.py sim_controller.py gui.py pyqt6_app.py thermal_pipe thermal_pipe_ui
 
       - name: Solver smoke check (no files written)
         run: |

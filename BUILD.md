@@ -19,7 +19,7 @@ python3 -m pip install pyinstaller
 ## 2) Compile/syntax readiness check (recommended before packaging)
 
 ```bash
-python3 -m compileall -q Pipe_Sim_V4.py sim_controller.py gui.py pyqt6_app.py
+python3 -m compileall -q Pipe_Sim_V4.py sim_controller.py gui.py pyqt6_app.py thermal_pipe thermal_pipe_ui
 ```
 
 Optional no-write solver smoke check:
