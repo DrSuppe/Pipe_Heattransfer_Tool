@@ -339,12 +339,17 @@ class PlottingMixin:
         dlg.setWindowTitle(source_ax.get_title() or "Plot Detail")
         dlg.resize(1000, 700)
         layout = QVBoxLayout(dlg)
-        fig = Figure(figsize=(10, 7), constrained_layout=True)
+        # Keep popup layout fixed to avoid resize jitter during hover redraws.
+        fig = Figure(figsize=(10, 7), constrained_layout=False)
         canvas = FigureCanvas(fig)
         layout.addWidget(canvas, 1)
 
         ax = fig.add_subplot(1, 1, 1)
         self._copy_axis_content(source_ax, ax, fig)
+        try:
+            fig.tight_layout(pad=1.2)
+        except Exception:
+            pass
         self._attach_popup_hover(canvas, ax)
         canvas.draw_idle()
         dlg.exec()
@@ -410,18 +415,28 @@ class PlottingMixin:
             bbox=dict(boxstyle="round,pad=0.3", fc="#1f1f1f", ec="#bbbbbb", alpha=0.9),
             color="white",
         )
+        try:
+            # Exclude hover annotation from layout calculations to prevent plot twitching.
+            annot.set_in_layout(False)
+        except Exception:
+            pass
         annot.set_visible(False)
         pixel_tol = 18.0
+        last_key = {"value": None}
 
         def _hide():
             if annot.get_visible():
                 annot.set_visible(False)
+                last_key["value"] = None
                 canvas.draw_idle()
 
-        def _show(xy, text):
+        def _show(xy, text, key):
+            if last_key["value"] == key and annot.get_visible():
+                return
             annot.xy = xy
             annot.set_text(text)
             annot.set_visible(True)
+            last_key["value"] = key
             canvas.draw_idle()
 
         def _line_hover(event):
@@ -473,12 +488,23 @@ class PlottingMixin:
                 label = str(line.get_label() or "line")
                 if not label or label.startswith("_"):
                     label = "line"
-                _show((xv, yv), f"{label}\nx={xv:.4g}\ny={yv:.4g}\nindex={i}")
+                _show(
+                    (xv, yv),
+                    f"{label}\nx={xv:.4g}\ny={yv:.4g}\nindex={i}",
+                    ("line", label, int(i)),
+                )
                 return
             image_hit = _image_hover(event)
             if image_hit is not None:
                 row, col, val = image_hit
-                _show((float(event.xdata), float(event.ydata)), f"heatmap\nx={event.xdata:.4g}\ny={event.ydata:.4g}\nvalue={val:.4g}\nrow={row}, col={col}")
+                _show(
+                    (float(event.xdata), float(event.ydata)),
+                    (
+                        f"heatmap\nx={event.xdata:.4g}\ny={event.ydata:.4g}\n"
+                        f"value={val:.4g}\nrow={row}, col={col}"
+                    ),
+                    ("image", int(row), int(col)),
+                )
                 return
             _hide()
 
