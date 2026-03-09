@@ -1,0 +1,18 @@
+# Antigravity Rules
+
+This file serves as a local anchor for the global AI interaction guidelines.
+
+## 1. Quota Awareness
+Monitor prompt quota and alert the USER proactively if usage is likely to exceed limits.
+
+## 2. Git Integration
+Automatically push changes to the repository after significant edits.
+
+## 3. AI-First Design
+Implement code and designs that are "cheap" and clear for AI parsing in future sessions.
+
+## 4. Continuity & Logging
+Maintain `PROGRESS_LOG.md` to track status and facilitate seamless chat switching.
+
+## 5. Proactive Alerts
+Remind the USER to start a new chat if context or quota limits are approaching.
