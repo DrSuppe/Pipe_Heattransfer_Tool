@@ -1707,6 +1707,11 @@ class ThermalPipeWindow(QMainWindow):
         root_logger.addHandler(self.log_handler)
         if not HAS_NUMBA:
             logging.warning("Numba acceleration not available; runs may be slower. Install 'numba' for best performance.")
+        elif sys.platform.startswith("win"):
+            logging.warning(
+                "Windows stability mode active: Numba kernels are disabled by default for runs "
+                "to avoid native-process crashes."
+            )
 
     def _refresh_material_lists(self):
         if hasattr(self, "pipe_list"):
@@ -3093,6 +3098,7 @@ class ThermalPipeWindow(QMainWindow):
             "semi_lag_courant_max": float(self.in_semi_lag_cmax.value()),
             "progress": self.progress.currentText(),
             "use_float32": self.chk_use_float32.isChecked(),
+            "enable_numba": (False if sys.platform.startswith("win") else bool(HAS_NUMBA)),
             "log_to_file": self.chk_log_to_file.isChecked(),
             "write_trace_csv": self.chk_write_trace.isChecked(),
             "target_asymptote_check": self.chk_target_asymptote.isChecked(),
@@ -3479,9 +3485,13 @@ class ThermalPipeWindow(QMainWindow):
                 logging.warning("Could not save optimization_summary.json: %s", exc)
 
         self._set_playback_data(result)
-        self._render_static_results(result)
         if self.chk_make_plots.isChecked():
             self._save_plot_images_from_result(result)
+        try:
+            self._render_static_results(result)
+        except Exception as exc:
+            self._results_axes = []
+            logging.exception("Failed to render embedded result plots: %s", exc)
         if self.chk_show_plots.isChecked() and HAS_MPL and self._results_axes:
             try:
                 self._show_results_popup(self._results_axes[0])

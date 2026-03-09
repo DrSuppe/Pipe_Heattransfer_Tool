@@ -15,6 +15,7 @@ import datetime
 import json
 import logging
 import shutil
+import sys
 import time
 from collections import deque
 from dataclasses import dataclass
@@ -107,6 +108,7 @@ params = {
 
     "parallel": False,  # single-threaded kernel (faster on mixed-core CPUs)
     "progress": "basic",  # "none" (quiet) or "basic" (periodic prints)
+    "enable_numba": not sys.platform.startswith("win"),  # default off on Windows for stability
     "log_to_file": True,  # write run.log into output directory
     "write_trace_csv": True,  # write runtime_trace.csv
     "max_run_dirs": 1000,  # cap number of run_* folders in output root (oldest pruned)
@@ -1209,6 +1211,7 @@ def main(
         p.update(params_override)
 
     validate_params(p)
+    use_numba = bool(HAS_NUMBA and p.get("enable_numba", True))
 
     # --- Output directory and logging setup ---
     logger = logging.getLogger()
@@ -1245,6 +1248,11 @@ def main(
         with open(OUTDIR / "params.json", "w") as _f:
             json.dump(p, _f, indent=2)
         logger.info("Saved params.json")
+    if HAS_NUMBA and not use_numba:
+        logger.warning(
+            "Numba kernels disabled for this run (enable_numba=False). "
+            "Windows defaults to this mode for stability."
+        )
 
     # --- local constants (compute from params for reusability) ---
     DTYPE = np.float32 if p.get("use_float32", False) else np.float64
@@ -1614,7 +1622,7 @@ def main(
 
         # Only recompute h_in,u every N steps
         if (n - _last_props_step) >= _update_props_every:
-            if HAS_NUMBA:
+            if use_numba:
                 _compute_h_in_numba(Tg, _h_in, _u, p_f, R_f, m_dot_f, A_flow_f, Di_f, mu_g_f, Pr_f, k_g_f)
             else:
                 _h_in[:], _u[:] = compute_h_in_local(Tg)
@@ -1631,7 +1639,7 @@ def main(
         h_in = _h_in; u = _u
 
         # Adaptive dt
-        if HAS_NUMBA:
+        if use_numba:
             tau_g_min, tau_w_min, tau_i_min, u_max = _compute_adaptive_dt_numba(
                 Tg, Ti, u, h_in, p_f, R_f, A_flow_f, dx_f, cp_g_f, P_in_f,
                 Cw_cell_vec, Ci_cell_vec, R_Tw_to_Ti_vec, Tamb_f, D_out_f,
@@ -1683,7 +1691,7 @@ def main(
         lam_i_f = _float(lam_i)
         used_seq_buffers = False
 
-        if HAS_NUMBA:
+        if use_numba:
             try:
                 if p.get("parallel", False):
                     Tg_new, Tw_new, Ti_new = _timestep_numba(
